@@ -89,10 +89,11 @@ class _CameraState extends State<Camera> {
   }
 
   Future<void> processImage(CameraImage image) async {
-    // Example processing - you'll need to implement the actual processing logic
-    // based on your model type
     try {
       final List<dynamic> results = []; // Add your model inference results here
+
+      // Debug print to check results
+      print("Inference results: $results");
 
       if (results.isNotEmpty) {
         widget.setRecognitions(
