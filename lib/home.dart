@@ -1,10 +1,12 @@
-import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
-import 'package:tflite_flutter/tflite_flutter.dart';
+// home.dart
 import 'dart:math' as math;
 
-import 'camera.dart';
+import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
+import 'package:tflite_flutter/tflite_flutter.dart';
+
 import 'bndbox.dart';
+import 'camera.dart';
 import 'models.dart';
 
 class HomePage extends StatefulWidget {
@@ -27,53 +29,24 @@ class _HomePageState extends State<HomePage> {
     super.initState();
   }
 
-  loadModel() async {
-    String? res;
-    switch (_model) {
-      case yolo:
-        res = await Tflite.loadModel(
-          /*model: "assets/yolov2_tiny.tflite",
-          labels: "assets/yolov2_tiny.txt",*/
-          model: "assets/model_unquant.tflite",
-          labels: "assets/labels.txt",
-        );
-        break;
-
-      case mobilenet:
-        res = await Tflite.loadModel(
-          /*model: "assets/mobilenet_v1_1.0_224.tflite",
-            labels: "assets/mobilenet_v1_1.0_224.txt"*/
-          model: "assets/model_unquant.tflite",
-          labels: "assets/labels.txt",
-        );
-        break;
-
-      case posenet:
-        res = await Tflite.loadModel(
-          //model: "assets/posenet_mv1_075_float_from_checkpoints.tflite"
-          model: "assets/model_unquant.tflite",
-        );
-        break;
-
-      default:
-        res = await Tflite.loadModel(
-          /*model: "assets/ssd_mobilenet.tflite",
-            labels: "assets/ssd_mobilenet.txt"*/
-          model: "assets/model_unquant.tflite",
-          labels: "assets/labels.txt",
-        );
+  Future<void> loadModel() async {
+    try {
+      await Interpreter.fromAsset('assets/model_unquant.tflite');
+      print('Model loaded successfully');
+    } catch (e) {
+      print('Error loading model: $e');
     }
-    print(res);
   }
 
-  onSelect(model) {
+  void onSelect(String model) {
     setState(() {
       _model = model;
     });
     loadModel();
   }
 
-  setRecognitions(recognitions, imageHeight, imageWidth) {
+  void setRecognitions(
+      List<dynamic> recognitions, int imageHeight, int imageWidth) {
     setState(() {
       _recognitions = recognitions;
       _imageHeight = imageHeight;

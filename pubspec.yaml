@@ -16,7 +16,6 @@ dev_dependencies:
   camera: ^0.11.0+2
   tflite_flutter: ^0.11.0
 
-
 flutter:
   uses-material-design: true
   assets:

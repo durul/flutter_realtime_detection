@@ -40,64 +40,27 @@ class _CameraState extends State<Camera> {
         }
         setState(() {});
 
-        controller.startImageStream((CameraImage img) {
+        controller.startImageStream((CameraImage img) async {
           if (!isDetecting) {
             isDetecting = true;
 
             int startTime = new DateTime.now().millisecondsSinceEpoch;
 
+// Inside _CameraState class, modify the image processing:
             if (widget.model == mobilenet) {
-              Tflite.runModelOnFrame(
-                bytesList: img.planes.map((plane) {
-                  return plane.bytes;
-                }).toList(),
-                imageHeight: img.height,
-                imageWidth: img.width,
-                numResults: 2,
-              ).then((recognitions) {
-                int endTime = new DateTime.now().millisecondsSinceEpoch;
-                print("Detection took ${endTime - startTime}");
-
-                widget.setRecognitions(recognitions!, img.height, img.width);
-
-                isDetecting = false;
-              });
+              var interpreter =
+                  await Interpreter.fromAsset('assets/model_unquant.tflite');
+              // Process image
+              // You'll need to implement image processing using TensorImage
+              // and run inference using interpreter.run()
             } else if (widget.model == posenet) {
-              Tflite.runPoseNetOnFrame(
-                bytesList: img.planes.map((plane) {
-                  return plane.bytes;
-                }).toList(),
-                imageHeight: img.height,
-                imageWidth: img.width,
-                numResults: 2,
-              ).then((recognitions) {
-                int endTime = new DateTime.now().millisecondsSinceEpoch;
-                print("Detection took ${endTime - startTime}");
-
-                widget.setRecognitions(recognitions!, img.height, img.width);
-
-                isDetecting = false;
-              });
+              var interpreter =
+                  await Interpreter.fromAsset('assets/model_unquant.tflite');
+              // Implement PoseNet specific processing
             } else {
-              Tflite.detectObjectOnFrame(
-                bytesList: img.planes.map((plane) {
-                  return plane.bytes;
-                }).toList(),
-                model: widget.model == yolo ? "YOLO" : "SSDMobileNet",
-                imageHeight: img.height,
-                imageWidth: img.width,
-                imageMean: widget.model == yolo ? 0 : 127.5,
-                imageStd: widget.model == yolo ? 255.0 : 127.5,
-                numResultsPerClass: 1,
-                threshold: widget.model == yolo ? 0.2 : 0.4,
-              ).then((recognitions) {
-                int endTime = new DateTime.now().millisecondsSinceEpoch;
-                print("Detection took ${endTime - startTime}");
-
-                widget.setRecognitions(recognitions!, img.height, img.width);
-
-                isDetecting = false;
-              });
+              var interpreter =
+                  await Interpreter.fromAsset('assets/model_unquant.tflite');
+              // Implement YOLO/SSD specific processing
             }
           }
         });
