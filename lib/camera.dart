@@ -1,4 +1,3 @@
-// camera.dart - Updated implementation
 import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
@@ -21,7 +20,7 @@ class Camera extends StatefulWidget {
 }
 
 class _CameraState extends State<Camera> {
-  late CameraController controller;
+  CameraController? controller;
   bool isDetecting = false;
   late Interpreter interpreter;
 
@@ -64,13 +63,13 @@ class _CameraState extends State<Camera> {
 
     try {
       print('Initializing camera...');
-      await controller.initialize();
+      await controller!.initialize();
       if (!mounted) return;
 
       setState(() {});
       print('Camera initialized successfully.');
 
-      controller.startImageStream((CameraImage img) {
+      controller!.startImageStream((CameraImage img) {
         if (!isDetecting) {
           isDetecting = true;
           print('Processing image...');
@@ -109,14 +108,14 @@ class _CameraState extends State<Camera> {
 
   @override
   void dispose() {
-    controller.dispose();
+    controller?.dispose();
     interpreter.close();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!controller.value.isInitialized) {
+    if (controller == null || !controller!.value.isInitialized) {
       return Center(
           child: CircularProgressIndicator()); // Show a loading indicator
     }
@@ -124,7 +123,7 @@ class _CameraState extends State<Camera> {
     var tmp = MediaQuery.of(context).size;
     var screenH = math.max(tmp.height, tmp.width);
     var screenW = math.min(tmp.height, tmp.width);
-    tmp = controller.value.previewSize!;
+    tmp = controller!.value.previewSize!;
     var previewH = math.max(tmp.height, tmp.width);
     var previewW = math.min(tmp.height, tmp.width);
     var screenRatio = screenH / screenW;
@@ -135,7 +134,7 @@ class _CameraState extends State<Camera> {
           screenRatio > previewRatio ? screenH : screenW / previewW * previewH,
       maxWidth:
           screenRatio > previewRatio ? screenH / previewH * previewW : screenW,
-      child: CameraPreview(controller),
+      child: CameraPreview(controller!),
     );
   }
 }
