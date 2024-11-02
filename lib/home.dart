@@ -26,6 +26,7 @@ class _HomePageState extends State<HomePage> {
 
   void setRecognitions(
       List<dynamic> recognitions, int imageHeight, int imageWidth) {
+    print("Recognitions: $recognitions"); // Add this
     setState(() {
       _recognitions = recognitions;
       _imageHeight = imageHeight;
@@ -40,6 +41,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> loadModel() async {
     try {
+      print('Loading model...');
       await Interpreter.fromAsset('assets/model_unquant.tflite');
       print('Model loaded successfully');
     } catch (e) {

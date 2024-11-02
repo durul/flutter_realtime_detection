@@ -36,9 +36,9 @@ class _CameraState extends State<Camera> {
       print('No camera is found');
       return;
     }
-
     // Initialize the appropriate model
     try {
+      print('Loading model: ${widget.model}');
       if (widget.model == mobilenet) {
         interpreter =
             await Interpreter.fromAsset('assets/mobilenet_v1_1.0_224.tflite');
@@ -63,19 +63,21 @@ class _CameraState extends State<Camera> {
     );
 
     try {
+      print('Initializing camera...');
       await controller.initialize();
       if (!mounted) return;
 
       setState(() {});
+      print('Camera initialized successfully.');
 
       controller.startImageStream((CameraImage img) {
         if (!isDetecting) {
           isDetecting = true;
+          print('Processing image...');
 
-          // Process the image here
-          // This is where you would run inference using the TFLite model
           processImage(img).then((_) {
             isDetecting = false;
+            print('Image processed.');
           }).catchError((e) {
             print('Error processing image: $e');
             isDetecting = false;
@@ -115,7 +117,8 @@ class _CameraState extends State<Camera> {
   @override
   Widget build(BuildContext context) {
     if (!controller.value.isInitialized) {
-      return Container();
+      return Center(
+          child: CircularProgressIndicator()); // Show a loading indicator
     }
 
     var tmp = MediaQuery.of(context).size;
