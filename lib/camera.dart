@@ -1,3 +1,4 @@
+// camera.dart - Updated implementation
 import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
@@ -22,55 +23,92 @@ class Camera extends StatefulWidget {
 class _CameraState extends State<Camera> {
   late CameraController controller;
   bool isDetecting = false;
+  late Interpreter interpreter;
 
   @override
   void initState() {
     super.initState();
+    initializeCamera();
+  }
 
-    if (widget.cameras.length < 1) {
+  Future<void> initializeCamera() async {
+    if (widget.cameras.isEmpty) {
       print('No camera is found');
-    } else {
-      controller = new CameraController(
-        widget.cameras[0],
-        ResolutionPreset.high,
-      );
-      controller.initialize().then((_) {
-        if (!mounted) {
-          return;
+      return;
+    }
+
+    // Initialize the appropriate model
+    try {
+      if (widget.model == mobilenet) {
+        interpreter =
+            await Interpreter.fromAsset('assets/mobilenet_v1_1.0_224.tflite');
+      } else if (widget.model == posenet) {
+        interpreter = await Interpreter.fromAsset(
+            'assets/posenet_mv1_075_float_from_checkpoints.tflite');
+      } else {
+        interpreter = await Interpreter.fromAsset(widget.model == ssd
+            ? 'assets/ssd_mobilenet.tflite'
+            : 'assets/yolov2_tiny.tflite');
+      }
+      print('Model loaded successfully: ${widget.model}');
+    } catch (e) {
+      print('Error loading model: $e');
+      return;
+    }
+
+    controller = CameraController(
+      widget.cameras[0],
+      ResolutionPreset.high,
+      enableAudio: false,
+    );
+
+    try {
+      await controller.initialize();
+      if (!mounted) return;
+
+      setState(() {});
+
+      controller.startImageStream((CameraImage img) {
+        if (!isDetecting) {
+          isDetecting = true;
+
+          // Process the image here
+          // This is where you would run inference using the TFLite model
+          processImage(img).then((_) {
+            isDetecting = false;
+          }).catchError((e) {
+            print('Error processing image: $e');
+            isDetecting = false;
+          });
         }
-        setState(() {});
-
-        controller.startImageStream((CameraImage img) async {
-          if (!isDetecting) {
-            isDetecting = true;
-
-            int startTime = new DateTime.now().millisecondsSinceEpoch;
-
-// Inside _CameraState class, modify the image processing:
-            if (widget.model == mobilenet) {
-              var interpreter =
-                  await Interpreter.fromAsset('assets/model_unquant.tflite');
-              // Process image
-              // You'll need to implement image processing using TensorImage
-              // and run inference using interpreter.run()
-            } else if (widget.model == posenet) {
-              var interpreter =
-                  await Interpreter.fromAsset('assets/model_unquant.tflite');
-              // Implement PoseNet specific processing
-            } else {
-              var interpreter =
-                  await Interpreter.fromAsset('assets/model_unquant.tflite');
-              // Implement YOLO/SSD specific processing
-            }
-          }
-        });
       });
+    } catch (e) {
+      print('Error initializing camera: $e');
+    }
+  }
+
+  Future<void> processImage(CameraImage image) async {
+    // Example processing - you'll need to implement the actual processing logic
+    // based on your model type
+    try {
+      final List<dynamic> results = []; // Add your model inference results here
+
+      if (results.isNotEmpty) {
+        widget.setRecognitions(
+          results,
+          image.height,
+          image.width,
+        );
+      }
+    } catch (e) {
+      print('Error during image processing: $e');
     }
   }
 
   @override
   void dispose() {
     controller.dispose();
+    interpreter.close();
     super.dispose();
   }
 

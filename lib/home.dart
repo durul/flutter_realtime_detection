@@ -19,10 +19,19 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  late List<dynamic> _recognitions;
+  late List<dynamic> _recognitions = []; // Initialize with empty list
   int _imageHeight = 0;
   int _imageWidth = 0;
   String _model = "";
+
+  void setRecognitions(
+      List<dynamic> recognitions, int imageHeight, int imageWidth) {
+    setState(() {
+      _recognitions = recognitions;
+      _imageHeight = imageHeight;
+      _imageWidth = imageWidth;
+    });
+  }
 
   @override
   void initState() {
@@ -43,15 +52,6 @@ class _HomePageState extends State<HomePage> {
       _model = model;
     });
     loadModel();
-  }
-
-  void setRecognitions(
-      List<dynamic> recognitions, int imageHeight, int imageWidth) {
-    setState(() {
-      _recognitions = recognitions;
-      _imageHeight = imageHeight;
-      _imageWidth = imageWidth;
-    });
   }
 
   @override
@@ -90,7 +90,7 @@ class _HomePageState extends State<HomePage> {
                   setRecognitions,
                 ),
                 BndBox(
-                    _recognitions == null ? [] : _recognitions,
+                    _recognitions, // Remove null check since list is initialized
                     math.max(_imageHeight, _imageWidth),
                     math.min(_imageHeight, _imageWidth),
                     screen.height,
