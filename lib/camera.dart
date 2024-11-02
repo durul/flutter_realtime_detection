@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:nativewrappers/_internal/vm/lib/typed_data_patch.dart';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
@@ -43,7 +42,8 @@ class _CameraState extends State<Camera> {
     try {
       print('Loading model: ${widget.model}');
 
-      final options = InterpreterOptions()..threads = 4;
+      final options = InterpreterOptions()
+        ..threads = 4; // Update the number of threads
 
       if (widget.model == mobilenet) {
         interpreter = await Interpreter.fromAsset(
@@ -67,49 +67,110 @@ class _CameraState extends State<Camera> {
       // Print input and output shapes for debugging
       final inputTensor = interpreter.getInputTensor(0);
       final outputTensor = interpreter.getOutputTensor(0);
+
       print('Input shape: ${inputTensor.shape}');
+      print('Input type: ${inputTensor.type}');
       print('Output shape: ${outputTensor.shape}');
+      print('Output type: ${outputTensor.type}');
+
+      // Validate input shape matches our preprocessing
+      final inputSize = computeTensorSize(inputTensor.shape);
+      if (inputSize != 1 * 224 * 224 * 3) {
+        print(
+            'Warning: Input tensor size ($inputSize) does not match expected size (${1 * 224 * 224 * 3})');
+      }
 
       print('Model loaded successfully: ${widget.model}');
-    } catch (e) {
-      print('Error loading model: $e');
-      return;
-    }
 
-    controller = CameraController(
-      widget.cameras[0],
-      ResolutionPreset.high,
-      enableAudio: false,
-    );
+      // Initialize camera controller
+      controller = CameraController(
+        widget.cameras[0],
+        ResolutionPreset.high,
+        enableAudio: false,
+      );
 
-    try {
-      print('Initializing camera...');
       await controller!.initialize();
+
       if (!mounted) return;
 
       setState(() {});
-      print('Camera initialized successfully.');
 
       controller!.startImageStream((CameraImage img) {
         if (!isDetecting) {
           isDetecting = true;
-          print('Processing image...');
-
           processImage(img).then((_) {
             isDetecting = false;
-            print('Image processed.');
           }).catchError((e) {
-            print('Error processing image: $e');
+            print('Error in image stream: $e');
             isDetecting = false;
           });
         }
       });
     } catch (e) {
-      print('Error initializing camera: $e');
+      print('Error in initializeCamera: $e');
+      return;
     }
   }
 
-// Placeholder for image preprocessing
+  // Update the processImage and preprocessImage methods:
+
+  Future<void> processImage(CameraImage image) async {
+    try {
+      // Get the preprocessed input data
+      var input = preprocessImage(image);
+
+      // Get input and output tensors
+      final inputTensor = interpreter.getInputTensor(0);
+      final outputTensor = interpreter.getOutputTensor(0);
+
+      // Print shapes for debugging
+      print('Input tensor shape: ${inputTensor.shape}');
+      print('Output tensor shape: ${outputTensor.shape}');
+
+      // Calculate total input size
+      final inputSize = inputTensor.shape.reduce((a, b) => a * b);
+
+      // Create input buffer with proper shape
+      var inputArray = Float32List(inputSize);
+      var inputIndex = 0;
+
+      // Fill the input array while preserving the 4D structure
+      for (int b = 0; b < 1; b++) {
+        for (int h = 0; h < 337; h++) {
+          for (int w = 0; w < 337; w++) {
+            for (int c = 0; c < 3; c++) {
+              inputArray[inputIndex++] = input[b][h][w][c];
+            }
+          }
+        }
+      }
+
+      // Create output buffer matching the expected output shape
+      final outputSize =
+          outputTensor.shape.reduce((a, b) => a * b); // 1 * 22 * 22 * 17
+      final outputArray = Float32List(outputSize);
+
+      // Allocate tensors
+      interpreter.allocateTensors();
+
+      // Run inference with reshaped tensors
+      final inputs = [inputArray];
+      final outputs = {0: outputArray};
+
+      interpreter.runForMultipleInputs(inputs, outputs);
+
+      // Process the output...
+      final List<dynamic> results = processOutput(outputArray.toList());
+
+      if (results.isNotEmpty) {
+        widget.setRecognitions(results, image.height, image.width);
+      }
+    } catch (e, stackTrace) {
+      print('Error during image processing: $e');
+      print('Stack trace: $stackTrace');
+    }
+  }
+
   List<List<List<List<double>>>> preprocessImage(CameraImage image) {
     // Convert YUV420 to RGB
     final int width = image.width;
@@ -146,19 +207,20 @@ class _CameraState extends State<Camera> {
       }
     }
 
-    // Resize the image to 224x224 (standard input size for many models)
+    // Resize to exactly 337x337 as required by the model
     final img.Image resizedImage = img.copyResize(rgbImage,
-        width: 224, height: 224, interpolation: img.Interpolation.linear);
+        width: 337, height: 337, interpolation: img.Interpolation.linear);
 
-    // Create 4D input tensor [1, height, width, 3]
+    // Create 4D input tensor [1][337][337][3]
     List<List<List<List<double>>>> input = List.generate(
-      1,
+      1, // batch size
       (i) => List.generate(
-        224,
+        337, // height
         (y) => List.generate(
-          224,
+          337, // width
           (x) {
             final pixel = resizedImage.getPixel(x, y);
+            // Normalize pixel values to [0,1]
             return [
               pixel.r.toDouble() / 255.0,
               pixel.g.toDouble() / 255.0,
@@ -172,73 +234,59 @@ class _CameraState extends State<Camera> {
     return input;
   }
 
-  // Update the processImage method to handle the new input format
-  Future<void> processImage(CameraImage image) async {
+// Helper function to compute total size of tensor shape
+  int computeTensorSize(List<int> shape) {
+    return shape.reduce((a, b) => a * b);
+  }
+
+// Also update the processOutput method to handle the 22x22x17 output:
+
+  List<dynamic> processOutput(List<double> output) {
+    // Reshape the flat output array to [1][22][22][17]
+    List<dynamic> results = [];
+
     try {
-      // Get the preprocessed input data
-      var input = preprocessImage(image);
-
-      // Convert 4D array to flat buffer
-      final inputBuffer = Float32List.fromList(flatInput);
+      // Process based on your model's specific output format
+      // This is a placeholder - update according to your model's output structure
       int index = 0;
+      for (int y = 0; y < 22; y++) {
+        for (int x = 0; x < 22; x++) {
+          List<double> blockPredictions = [];
+          for (int c = 0; c < 17; c++) {
+            blockPredictions.add(output[index++]);
+          }
 
-      for (int batch = 0; batch < 1; batch++) {
-        for (int h = 0; h < 224; h++) {
-          for (int w = 0; w < 224; w++) {
-            for (int c = 0; c < 3; c++) {
-              inputBuffer[index++] = input[batch][h][w][c];
-            }
+          // Process the predictions for this grid cell
+          // Add detection if confidence threshold is met
+          // This is where you'd implement your specific detection logic
+          var processed = processGridCell(blockPredictions, x, y);
+          if (processed != null) {
+            results.add(processed);
           }
         }
       }
-
-      // Get input and output tensors
-      final inputTensor = interpreter.getInputTensor(0);
-      final outputTensor = interpreter.getOutputTensor(0);
-
-      // Create output buffer based on output tensor shape
-      final outputBuffer =
-          Float32List(outputTensor.shape.reduce((a, b) => a * b));
-
-      // Allocate tensors and run inference
-      interpreter.allocateTensors();
-
-      // Run inference
-      interpreter.invoke();
-
-      // Get output data
-      outputTensor.copyTo(outputBuffer);
-
-      // Process the output...
-      final List<dynamic> results = processOutput(outputBuffer.toList());
-
-      if (results.isNotEmpty) {
-        widget.setRecognitions(results, image.height, image.width);
-      }
     } catch (e) {
-      print('Error during image processing: $e');
-      print(e.toString());
-    }
-  }
-
-// Placeholder for processing model output
-  List<dynamic> processOutput(List output) {
-    // Assuming the output is a list of predictions
-    List<dynamic> results = [];
-
-    for (var prediction in output) {
-      // Process each prediction
-      // This is a placeholder logic, adjust based on your model's output format
-      if (prediction['confidence'] > 0.5) {
-        results.add({
-          "label": prediction['label'],
-          "confidence": prediction['confidence'],
-          "rect": prediction['rect'],
-        });
-      }
+      print('Error processing output: $e');
     }
 
     return results;
+  }
+
+  Map<String, dynamic>? processGridCell(List<double> cellValues, int x, int y) {
+    // Implement your specific grid cell processing logic here
+    // This is a placeholder - update according to your model's output format
+    double confidence = cellValues[0]; // Assuming first value is confidence
+
+    if (confidence > 0.5) {
+      // Adjust threshold as needed
+      return {
+        "confidence": confidence,
+        "x": x / 22.0, // Normalize coordinates
+        "y": y / 22.0,
+        // Add other relevant values based on your model's output format
+      };
+    }
+    return null;
   }
 
   @override
