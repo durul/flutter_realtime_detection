@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:tflite/tflite.dart';
+import 'package:tflite_flutter/tflite_flutter.dart';
 import 'dart:math' as math;
 
 import 'camera.dart';
@@ -17,7 +17,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  List<dynamic> _recognitions;
+  late List<dynamic> _recognitions;
   int _imageHeight = 0;
   int _imageWidth = 0;
   String _model = "";
@@ -28,7 +28,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   loadModel() async {
-    String res;
+    String? res;
     switch (_model) {
       case yolo:
         res = await Tflite.loadModel(

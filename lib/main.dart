@@ -1,9 +1,11 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+
 import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
+
 import 'home.dart';
 
-List<CameraDescription> cameras;
+late final List<CameraDescription> cameras;
 
 Future<Null> main() async {
   WidgetsFlutterBinding.ensureInitialized();
