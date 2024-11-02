@@ -1,4 +1,6 @@
 import 'dart:math' as math;
+import 'dart:nativewrappers/_internal/vm/lib/typed_data_patch.dart';
+import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -31,25 +33,43 @@ class _CameraState extends State<Camera> {
     initializeCamera();
   }
 
+// In initializeCamera method
   Future<void> initializeCamera() async {
     if (widget.cameras.isEmpty) {
       print('No camera is found');
       return;
     }
-    // Initialize the appropriate model
+
     try {
       print('Loading model: ${widget.model}');
+
+      final options = InterpreterOptions()..threads = 4;
+
       if (widget.model == mobilenet) {
-        interpreter =
-            await Interpreter.fromAsset('assets/mobilenet_v1_1.0_224.tflite');
+        interpreter = await Interpreter.fromAsset(
+          'assets/mobilenet_v1_1.0_224.tflite',
+          options: options,
+        );
       } else if (widget.model == posenet) {
         interpreter = await Interpreter.fromAsset(
-            'assets/posenet_mv1_075_float_from_checkpoints.tflite');
+          'assets/posenet_mv1_075_float_from_checkpoints.tflite',
+          options: options,
+        );
       } else {
-        interpreter = await Interpreter.fromAsset(widget.model == ssd
-            ? 'assets/ssd_mobilenet.tflite'
-            : 'assets/yolov2_tiny.tflite');
+        interpreter = await Interpreter.fromAsset(
+          widget.model == ssd
+              ? 'assets/ssd_mobilenet.tflite'
+              : 'assets/yolov2_tiny.tflite',
+          options: options,
+        );
       }
+
+      // Print input and output shapes for debugging
+      final inputTensor = interpreter.getInputTensor(0);
+      final outputTensor = interpreter.getOutputTensor(0);
+      print('Input shape: ${inputTensor.shape}');
+      print('Output shape: ${outputTensor.shape}');
+
       print('Model loaded successfully: ${widget.model}');
     } catch (e) {
       print('Error loading model: $e');
@@ -89,38 +109,8 @@ class _CameraState extends State<Camera> {
     }
   }
 
-  Future<void> processImage(CameraImage image) async {
-    try {
-      // Convert the image to the format expected by the model
-      // This is a placeholder for actual preprocessing logic
-      var input = preprocessImage(image);
-
-      // Define the output buffer
-      var output =
-          List.filled(1 * 10, 0).reshape([1, 10]); // Adjust size as needed
-
-      // Run inference
-      interpreter.run(input, output);
-
-      // Process the output to extract meaningful results
-      final List<dynamic> results = processOutput(output);
-
-      // Update recognitions
-      if (results.isNotEmpty) {
-        widget.setRecognitions(
-          results,
-          image.height,
-          image.width,
-        );
-      }
-    } catch (e) {
-      print('Error during image processing: $e');
-    }
-  }
-
 // Placeholder for image preprocessing
-
-  List<double> preprocessImage(CameraImage image) {
+  List<List<List<List<double>>>> preprocessImage(CameraImage image) {
     // Convert YUV420 to RGB
     final int width = image.width;
     final int height = image.height;
@@ -160,19 +150,75 @@ class _CameraState extends State<Camera> {
     final img.Image resizedImage = img.copyResize(rgbImage,
         width: 224, height: 224, interpolation: img.Interpolation.linear);
 
-    // Convert to normalized float array
-    List<double> normalized = [];
-    for (int y = 0; y < 224; y++) {
-      for (int x = 0; x < 224; x++) {
-        final pixel = resizedImage.getPixel(x, y);
-        // In image package v4.3.0, we need to use pixel.r, pixel.g, pixel.b
-        normalized.add(pixel.r.toDouble() / 255.0);
-        normalized.add(pixel.g.toDouble() / 255.0);
-        normalized.add(pixel.b.toDouble() / 255.0);
-      }
-    }
+    // Create 4D input tensor [1, height, width, 3]
+    List<List<List<List<double>>>> input = List.generate(
+      1,
+      (i) => List.generate(
+        224,
+        (y) => List.generate(
+          224,
+          (x) {
+            final pixel = resizedImage.getPixel(x, y);
+            return [
+              pixel.r.toDouble() / 255.0,
+              pixel.g.toDouble() / 255.0,
+              pixel.b.toDouble() / 255.0
+            ];
+          },
+        ),
+      ),
+    );
 
-    return normalized;
+    return input;
+  }
+
+  // Update the processImage method to handle the new input format
+  Future<void> processImage(CameraImage image) async {
+    try {
+      // Get the preprocessed input data
+      var input = preprocessImage(image);
+
+      // Convert 4D array to flat buffer
+      final inputBuffer = Float32List.fromList(flatInput);
+      int index = 0;
+
+      for (int batch = 0; batch < 1; batch++) {
+        for (int h = 0; h < 224; h++) {
+          for (int w = 0; w < 224; w++) {
+            for (int c = 0; c < 3; c++) {
+              inputBuffer[index++] = input[batch][h][w][c];
+            }
+          }
+        }
+      }
+
+      // Get input and output tensors
+      final inputTensor = interpreter.getInputTensor(0);
+      final outputTensor = interpreter.getOutputTensor(0);
+
+      // Create output buffer based on output tensor shape
+      final outputBuffer =
+          Float32List(outputTensor.shape.reduce((a, b) => a * b));
+
+      // Allocate tensors and run inference
+      interpreter.allocateTensors();
+
+      // Run inference
+      interpreter.invoke();
+
+      // Get output data
+      outputTensor.copyTo(outputBuffer);
+
+      // Process the output...
+      final List<dynamic> results = processOutput(outputBuffer.toList());
+
+      if (results.isNotEmpty) {
+        widget.setRecognitions(results, image.height, image.width);
+      }
+    } catch (e) {
+      print('Error during image processing: $e');
+      print(e.toString());
+    }
   }
 
 // Placeholder for processing model output
